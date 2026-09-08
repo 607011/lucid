@@ -7,7 +7,8 @@ at full performance without the monitors drawing unnecessary power.
 
 ## How it works
 
-Clicking "Prevent Sleep" in the menu does two things:
+Clicking "Prevent Sleep" in the menu – or pressing the global shortcut
+**⌃⌥⌘L**, which works from any app – does two things:
 
 1. **`IOPMAssertionCreateWithName` with `kIOPMAssertionTypeNoIdleSleep`**
    (equivalent to `caffeinate -i`) – prevents macOS from going into system
@@ -33,6 +34,14 @@ On the very first launch, the app automatically registers itself as a
 login item (`SMAppService`, checkmark next to "Start at Login" in the
 menu). This only happens once – if you remove the entry again via the
 menu afterwards, it won't be re-added on the next launch.
+
+The global shortcut is registered via the classic Carbon hot key API
+(`RegisterEventHotKey`, see
+[`Sources/Lucid/HotKeyManager.swift`](Sources/Lucid/HotKeyManager.swift)).
+Unlike an `NSEvent` global monitor, this works without the user having to
+grant Accessibility/Input Monitoring permission. To change the key
+combination, edit `hotKeyCode`/`hotKeyModifiers` in
+[`AppDelegate.swift`](Sources/Lucid/AppDelegate.swift).
 
 ## Building
 

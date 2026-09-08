@@ -1,15 +1,23 @@
 import AppKit
+import Carbon.HIToolbox
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+
+    /// Global shortcut for toggling "Prevent Sleep": ⌃⌥⌘L. Chosen to be
+    /// unlikely to collide with system or third-party app shortcuts.
+    private static let hotKeyCode = UInt32(kVK_ANSI_L)
+    private static let hotKeyModifiers = UInt32(controlKey | optionKey | cmdKey)
+    private static let hotKeyDisplayString = "⌃⌥⌘L"
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let powerManager = PowerAssertionManager()
     private let didSetUpLoginItemDefaultsKey = "de.olau.lucid.didSetUpLoginItem"
     private var screenWakeObserver: NSObjectProtocol?
+    private var hotKeyManager: HotKeyManager?
 
     private lazy var toggleItem: NSMenuItem = {
         let item = NSMenuItem(
-            title: "Prevent Sleep",
+            title: "Prevent Sleep  \(Self.hotKeyDisplayString)",
             action: #selector(toggleActive),
             keyEquivalent: ""
         )
@@ -36,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         registerLoginItemOnFirstLaunch()
         observeScreenWake()
+        registerHotKey()
 
         // Start deliberately inactive: the display should only be turned
         // off immediately on an explicit click, not unexpectedly on
@@ -62,6 +71,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             guard let self, self.powerManager.isActive else { return }
             self.setActive(false)
+        }
+    }
+
+    /// Registers the global ⌃⌥⌘L shortcut so "Prevent Sleep" can be
+    /// toggled from any app, not just from this menu. Uses the classic
+    /// Carbon hot key API, which – unlike an `NSEvent` global monitor –
+    /// doesn't require Accessibility/Input Monitoring permission.
+    private func registerHotKey() {
+        hotKeyManager = HotKeyManager(
+            keyCode: Self.hotKeyCode,
+            modifiers: Self.hotKeyModifiers
+        ) { [weak self] in
+            self?.toggleActive()
         }
     }
 
