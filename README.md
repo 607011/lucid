@@ -1,0 +1,79 @@
+# Lucid
+
+A macOS menu bar app that prevents system sleep while immediately turning
+off all connected displays. Built for sustained-load computations (e.g.
+[PrimeGrid](https://www.primegrid.com/)/BOINC), where the CPU should run
+at full performance without the monitors drawing unnecessary power.
+
+## How it works
+
+Clicking "Prevent Sleep" in the menu does two things:
+
+1. **`IOPMAssertionCreateWithName` with `kIOPMAssertionTypeNoIdleSleep`**
+   (equivalent to `caffeinate -i`) – prevents macOS from going into system
+   sleep due to inactivity. Running computations (BOINC/PrimeGrid) keep
+   running at full speed.
+2. **`pmset displaysleepnow`** – turns off all connected displays
+   immediately, instead of waiting for the configured display-sleep timer.
+
+Keyboard or mouse activity then turns the displays back on normally –
+macOS handles that itself, no custom code required (the machine never
+actually went to sleep, only the displays did).
+
+Clicking "Prevent Sleep" again turns the protection back off and releases
+the assertion; the normal power-saving settings from System Settings then
+apply again.
+
+The app deliberately starts **inactive** – even with "Start at Login"
+enabled – so the displays don't unexpectedly turn off right after login.
+
+On the very first launch, the app automatically registers itself as a
+login item (`SMAppService`, checkmark next to "Start at Login" in the
+menu). This only happens once – if you remove the entry again via the
+menu afterwards, it won't be re-added on the next launch.
+
+## Building
+
+Requirement: Xcode command line tools (`swift --version` should work).
+
+```bash
+./Scripts/build_app.sh
+```
+
+The script builds a release build and packages it into
+`build/Lucid.app` (including Info.plist and an ad-hoc signature).
+
+## Installing
+
+```bash
+cp -R build/Lucid.app /Applications/
+```
+
+Then open `/Applications/Lucid.app`. On first launch it registers itself
+as a login item; you can toggle that at any time from the menu (uses
+`SMAppService`, which only works from an installed `.app` bundle, not
+from `swift run`).
+
+## Uninstalling
+
+Menu → "Quit", then:
+
+```bash
+rm -rf /Applications/Lucid.app
+```
+
+If "Start at Login" was enabled, disable it in the app first (or remove
+it in System Settings → General → Login Items).
+
+## Notes
+
+- `pmset displaysleepnow` turns off **all** connected displays, not just
+  the main one.
+- The app only prevents *system* sleep, not manual sleep (e.g. via the
+  Apple menu's "Sleep" or closing a notebook lid).
+- No sandboxing/notarization – the ad-hoc signature from `build_app.sh`
+  is sufficient for personal use.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

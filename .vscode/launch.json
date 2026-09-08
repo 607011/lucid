@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:lucid}",
+            "name": "Debug Lucid",
+            "target": "Lucid",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug Lucid"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:lucid}",
+            "name": "Release Lucid",
+            "target": "Lucid",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release Lucid"
+        }
+    ]
+}
