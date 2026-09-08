@@ -84,7 +84,7 @@ func tinted(_ image: NSImage, color: NSColor) -> NSImage {
     return result
 }
 
-let symbolConfig = NSImage.SymbolConfiguration(pointSize: sizeF * 0.30, weight: .medium)
+let symbolConfig = NSImage.SymbolConfiguration(pointSize: sizeF * 0.44, weight: .medium)
 guard let baseSymbol = NSImage(systemSymbolName: "cup.and.saucer.fill", accessibilityDescription: nil),
       let symbol = baseSymbol.withSymbolConfiguration(symbolConfig) else {
     fatalError("Could not load cup.and.saucer.fill symbol")
