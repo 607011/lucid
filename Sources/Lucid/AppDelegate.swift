@@ -6,12 +6,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let powerManager = PowerAssertionManager()
     private let didSetUpLoginItemDefaultsKey = "de.olau.lucid.didSetUpLoginItem"
 
-    private lazy var statusLabelItem: NSMenuItem = {
-        let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        return item
-    }()
-
     private lazy var toggleItem: NSMenuItem = {
         let item = NSMenuItem(
             title: "Prevent Sleep",
@@ -80,9 +74,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func configureMenu() {
+        // No separate text status line: the checkmark on `toggleItem`
+        // already says whether sleep prevention is on, and any label
+        // claiming something about the display's current state is moot
+        // anyway – if you can read this menu, the display is on.
         let menu = NSMenu()
-        menu.addItem(statusLabelItem)
-        menu.addItem(.separator())
         menu.addItem(toggleItem)
         menu.addItem(.separator())
         menu.addItem(loginItem)
@@ -128,15 +124,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateUI(active: Bool) {
         statusItem.button?.image = statusImage(active: active)
         toggleItem.state = active ? .on : .off
-        // Avoid the word "Active" here: it reads as a claim about the
-        // display's current state, which stops being true the moment the
-        // user wakes it up (the assertion itself is still genuinely held
-        // at that point – only the one-time "turn display off" action
-        // already happened). Phrase it as what is actually still
-        // guaranteed instead: the system won't idle-sleep.
-        statusLabelItem.title = active
-            ? "System won't idle-sleep"
-            : "System may sleep normally"
     }
 
     private func statusImage(active: Bool) -> NSImage? {
