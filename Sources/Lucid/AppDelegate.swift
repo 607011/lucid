@@ -128,9 +128,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateUI(active: Bool) {
         statusItem.button?.image = statusImage(active: active)
         toggleItem.state = active ? .on : .off
+        // Avoid the word "Active" here: it reads as a claim about the
+        // display's current state, which stops being true the moment the
+        // user wakes it up (the assertion itself is still genuinely held
+        // at that point – only the one-time "turn display off" action
+        // already happened). Phrase it as what is actually still
+        // guaranteed instead: the system won't idle-sleep.
         statusLabelItem.title = active
-            ? "Active – Display off, system awake"
-            : "Inactive"
+            ? "System won't idle-sleep"
+            : "System may sleep normally"
     }
 
     private func statusImage(active: Bool) -> NSImage? {
