@@ -20,9 +20,11 @@ Keyboard or mouse activity then turns the displays back on normally –
 macOS handles that itself, no custom code required (the machine never
 actually went to sleep, only the displays did).
 
-Clicking "Prevent Sleep" again turns the protection back off and releases
-the assertion; the normal power-saving settings from System Settings then
-apply again.
+The moment the displays wake up, the app automatically turns "Prevent
+Sleep" back off again (via `NSWorkspace.screensDidWakeNotification`) and
+releases the assertion. That way a single click always both re-arms and
+triggers it – no need to first uncheck a still-checked item before you
+can put the displays back to sleep.
 
 The app deliberately starts **inactive** – even with "Start at Login"
 enabled – so the displays don't unexpectedly turn off right after login.

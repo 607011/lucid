@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let powerManager = PowerAssertionManager()
     private let didSetUpLoginItemDefaultsKey = "de.olau.lucid.didSetUpLoginItem"
+    private var screenWakeObserver: NSObjectProtocol?
 
     private lazy var toggleItem: NSMenuItem = {
         let item = NSMenuItem(
@@ -34,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         loginItem.state = LoginItemManager.isEnabled ? .on : .off
 
         registerLoginItemOnFirstLaunch()
+        observeScreenWake()
 
         // Start deliberately inactive: the display should only be turned
         // off immediately on an explicit click, not unexpectedly on
@@ -43,6 +45,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         powerManager.stop()
+        if let screenWakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(screenWakeObserver)
+        }
+    }
+
+    /// Turns "Prevent Sleep" back off automatically once the display wakes
+    /// up (key press / mouse move). Without this, the user would have to
+    /// uncheck it manually before a single click could put the display
+    /// back to sleep again.
+    private func observeScreenWake() {
+        screenWakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.screensDidWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, self.powerManager.isActive else { return }
+            self.setActive(false)
+        }
     }
 
     /// Registers the app as a login item automatically on the very first
