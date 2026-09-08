@@ -64,6 +64,28 @@ regenerate it after changing the design:
 ./Scripts/generate_iconset.sh
 ```
 
+## Releases
+
+Pushing a version tag like `v1.0.0` triggers
+[`.github/workflows/release.yml`](.github/workflows/release.yml), which
+builds a `.dmg` (via `Scripts/build_dmg.sh`, stamping the tag as
+`CFBundleShortVersionString`) and publishes it as a GitHub Release with
+the DMG attached.
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+To build a DMG locally the same way:
+
+```bash
+./Scripts/build_dmg.sh 1.0.0
+```
+
+produces `build/Lucid-1.0.0.dmg`, a disk image containing `Lucid.app` and
+an `Applications` symlink for drag-and-drop installation.
+
 ## Installing
 
 ```bash
@@ -93,7 +115,11 @@ it in System Settings → General → Login Items).
 - The app only prevents *system* sleep, not manual sleep (e.g. via the
   Apple menu's "Sleep" or closing a notebook lid).
 - No sandboxing/notarization – the ad-hoc signature from `build_app.sh`
-  is sufficient for personal use.
+  is sufficient for personal use. Because of that, macOS Gatekeeper will
+  flag a downloaded DMG build as being from an unidentified developer;
+  right-click → Open (or remove the quarantine flag with
+  `xattr -d com.apple.quarantine /Applications/Lucid.app`) to run it
+  anyway.
 
 ## License
 

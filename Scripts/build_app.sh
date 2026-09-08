@@ -4,6 +4,10 @@ set -euo pipefail
 
 APP_NAME="Lucid"
 BUNDLE_ID="de.olau.lucid"
+# Overridable so CI can stamp the actual release version (e.g. from a
+# "v1.0.0" git tag) instead of this placeholder.
+APP_VERSION="${APP_VERSION:-1.0}"
+APP_BUILD="${APP_BUILD:-1}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -40,9 +44,9 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>$APP_VERSION</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>$APP_BUILD</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSUIElement</key>
@@ -57,7 +61,7 @@ echo "==> Ad-hoc signing..."
 codesign --force --deep --sign - "$APP_DIR"
 
 echo ""
-echo "Done: $APP_DIR"
+echo "Done: $APP_DIR (version $APP_VERSION, build $APP_BUILD)"
 echo ""
 echo "Install:"
 echo "  cp -R \"$APP_DIR\" /Applications/"
