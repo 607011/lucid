@@ -21,12 +21,14 @@ jobs:
       - name: Swift version
         run: swift --version
 
-      - name: Build DMG
+      - name: Build DMGs
         env:
           # Strip the leading "v" from e.g. "v1.0.0" -> "1.0.0".
           APP_VERSION: ${{ github.ref_name }}
         run: |
-          ./Scripts/build_dmg.sh "${APP_VERSION#v}"
+          VERSION="${APP_VERSION#v}"
+          ./Scripts/build_dmg.sh "$VERSION" arm64
+          ./Scripts/build_dmg.sh "$VERSION" x86_64
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4

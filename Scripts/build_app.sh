@@ -8,17 +8,33 @@ BUNDLE_ID="de.olau.lucid"
 # "v1.0.0" git tag) instead of this placeholder.
 APP_VERSION="${APP_VERSION:-1.0}"
 APP_BUILD="${APP_BUILD:-1}"
+# Space-separated list of architectures to build. "arm64 x86_64" (the
+# default) produces a universal binary; a single architecture produces a
+# smaller, native-only one (see build_dmg.sh, which uses this to build
+# separate per-architecture DMGs).
+APP_ARCHS="${APP_ARCHS:-arm64 x86_64}"
+read -ra ARCH_LIST <<< "$APP_ARCHS"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-# Universal (arm64 + x86_64) build output lands in a different directory
-# than a plain single-arch `swift build -c release`.
-BUILD_DIR="$PROJECT_DIR/.build/apple/Products/Release"
 APP_DIR="$PROJECT_DIR/build/$APP_NAME.app"
 
-echo "==> Building universal (arm64 + x86_64) release binary..."
+# SPM puts a universal (2+ arch) build in a different directory than a
+# single-architecture one.
+if [ "${#ARCH_LIST[@]}" -gt 1 ]; then
+    BUILD_DIR="$PROJECT_DIR/.build/apple/Products/Release"
+else
+    BUILD_DIR="$PROJECT_DIR/.build/${ARCH_LIST[0]}-apple-macosx/release"
+fi
+
+ARCH_FLAGS=()
+for arch in "${ARCH_LIST[@]}"; do
+    ARCH_FLAGS+=(--arch "$arch")
+done
+
+echo "==> Building release binary ($APP_ARCHS)..."
 cd "$PROJECT_DIR"
-swift build -c release --arch arm64 --arch x86_64
+swift build -c release "${ARCH_FLAGS[@]}"
 
 echo "==> Assembling app bundle at $APP_DIR"
 rm -rf "$APP_DIR"
