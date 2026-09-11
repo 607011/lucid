@@ -32,7 +32,15 @@ final class IdleActivityMonitor {
     /// actually dimmed.
     private static let pollInterval: TimeInterval = 0.3
 
+    /// How long after `start()` to ignore activity entirely. Dimming is
+    /// most often triggered via the ⌃⌥⌘L hotkey (`HotKeyManager`), whose
+    /// own key-up follows right behind the key-down that fired it – without
+    /// this grace period that key-up alone would immediately count as
+    /// "activity" and undo the dim it was used to start.
+    private static let gracePeriod: TimeInterval = 1.5
+
     private var timer: Timer?
+    private var startedAt: Date?
     private let handler: () -> Void
 
     init(handler: @escaping () -> Void) {
@@ -42,6 +50,7 @@ final class IdleActivityMonitor {
     /// No-op if already running.
     func start() {
         guard timer == nil else { return }
+        startedAt = Date()
         timer = Timer.scheduledTimer(withTimeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
             self?.poll()
         }
@@ -50,9 +59,11 @@ final class IdleActivityMonitor {
     func stop() {
         timer?.invalidate()
         timer = nil
+        startedAt = nil
     }
 
     private func poll() {
+        guard let startedAt, Date().timeIntervalSince(startedAt) >= Self.gracePeriod else { return }
         let idleSeconds = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: Self.anyInputEventType)
         if idleSeconds < Self.pollInterval {
             handler()
