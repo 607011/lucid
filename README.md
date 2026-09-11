@@ -104,23 +104,29 @@ regenerate it after changing the design:
 
 Pushing a version tag like `v1.0.0` triggers
 [`.github/workflows/release.yml`](.github/workflows/release.yml), which
-builds a `.dmg` (via `Scripts/build_dmg.sh`, stamping the tag as
-`CFBundleShortVersionString`) and publishes it as a GitHub Release with
-the DMG attached.
+builds **two** `.dmg`s – one native `arm64` build, one native `x86_64`
+build (via `Scripts/build_dmg.sh`, stamping the tag as
+`CFBundleShortVersionString`) – and publishes them as a GitHub Release
+with both DMGs attached, so people download only the smaller,
+single-architecture build their Mac actually needs.
 
 ```bash
 git tag v1.0.0
 git push origin v1.0.0
 ```
 
-To build a DMG locally the same way:
+To build the same DMGs locally:
 
 ```bash
-./Scripts/build_dmg.sh 1.0.0
+./Scripts/build_dmg.sh 1.0.0 arm64    # build/Lucid-1.0.0-arm64.dmg
+./Scripts/build_dmg.sh 1.0.0 x86_64   # build/Lucid-1.0.0-x86_64.dmg
 ```
 
-produces `build/Lucid-1.0.0.dmg`, a disk image containing `Lucid.app` and
-an `Applications` symlink for drag-and-drop installation.
+Each is a disk image containing `Lucid.app` and an `Applications` symlink
+for drag-and-drop installation. Omit the architecture (or pass
+`universal`) to build a single, larger DMG with both architectures in
+one binary instead – `./Scripts/build_dmg.sh 1.0.0` →
+`build/Lucid-1.0.0.dmg`.
 
 ## Installing
 
@@ -146,6 +152,13 @@ it in System Settings → General → Login Items).
 
 ## Notes
 
+- **Apple Silicon + Intel:** `build_app.sh` can target either or both
+  (`swift build --arch ...`; see `APP_ARCHS` in the script) – Releases
+  ship separate native `arm64`/`x86_64` DMGs rather than one fat binary,
+  see "Releases" above. Requires macOS 13 (Ventura) or later on both
+  architectures – Ventura itself already needs a roughly 2017-or-newer
+  Mac (model-dependent), so this only rules out fairly old Intel
+  machines; a 2019/2020 27" iMac is well within that.
 - `pmset displaysleepnow` turns off **all** connected displays, not just
   the main one.
 - The app only prevents *system* sleep, not manual sleep (e.g. via the
