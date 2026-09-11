@@ -14,8 +14,7 @@ Clicking "Prevent Sleep" in the menu – or pressing the global shortcut
    (equivalent to `caffeinate -i`) – prevents macOS from going into system
    sleep due to inactivity. Running computations (BOINC/PrimeGrid) keep
    running at full speed.
-2. **`pmset displaysleepnow`** – turns off all connected displays
-   immediately, instead of waiting for the configured display-sleep timer.
+2. Applies the selected **mode** (see below) to every connected display.
 
 Keyboard or mouse activity then turns the displays back on normally –
 macOS handles that itself, no custom code required (the machine never
@@ -25,7 +24,44 @@ The moment the displays wake up, the app automatically turns "Prevent
 Sleep" back off again (via `NSWorkspace.screensDidWakeNotification`) and
 releases the assertion. That way a single click always both re-arms and
 triggers it – no need to first uncheck a still-checked item before you
-can put the displays back to sleep.
+can put the displays back to sleep. (This only applies to "Turn Display
+Off" mode below – "Dim Display" never actually sleeps the display, so
+there's no wake event to catch; turn it off again the same way you
+turned it on.)
+
+### Modes
+
+Two mutually exclusive modes, picked via the checkmarks under "Prevent
+Sleep" in the menu:
+
+- **Turn Display Off** (default) – `pmset displaysleepnow`, turns off all
+  connected displays immediately instead of waiting for the configured
+  display-sleep timer. Maximum power saving. **Caveat:** macOS/the SoC
+  appears to drop into a measurably lower CPU performance state when no
+  display is actively signaling at all – the same effect documented for
+  running a Mac mini fully headless. For CPU-bound background work like
+  PrimeGrid, this can noticeably cut into throughput. The standard
+  workaround (unrelated to Lucid) is a cheap HDMI/DisplayPort dummy plug
+  that keeps macOS convinced a display is attached.
+- **Dim Display** – dims every display to near-minimum brightness instead
+  of sleeping it (`DisplayDimController`). Keeps the display logically
+  "on", which should avoid the reduced-performance state above, at the
+  cost of a faint residual glow instead of a fully black screen. Uses
+  **undocumented, private macOS APIs** (see below) – less certain to work
+  on any given machine than "Turn Display Off", and restoring brightness
+  needs a manual click/⌃⌥⌘L again (see previous paragraph).
+
+Dimming the built-in display uses the private `DisplayServices`
+framework (same mechanism as the `brightness` CLI tool and Control
+Center) – reliable, and verified against real hardware while building
+this. Dimming external displays uses DDC/CI (VESA MCCS) over the private
+`IOAVService` I2C transport – the same undocumented mechanism
+[MonitorControl](https://github.com/MonitorControl/MonitorControl) and
+Lunar use. DDC support varies a lot by monitor/cable/hub, and this path
+could not be tested against real external hardware while building it (see
+[`Sources/Lucid/ExternalDisplayBrightness.swift`](Sources/Lucid/ExternalDisplayBrightness.swift)).
+Every call fails silently, so a display that doesn't support it is simply
+left alone rather than causing a crash or error dialog.
 
 The app deliberately starts **inactive** – even with "Start at Login"
 enabled – so the displays don't unexpectedly turn off right after login.

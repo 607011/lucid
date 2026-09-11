@@ -1,6 +1,21 @@
 import AppKit
 import Carbon.HIToolbox
 
+/// How "Prevent Sleep" affects the display while active.
+enum SleepPreventionMode: Int {
+    /// Turn the display off immediately via `pmset displaysleepnow`
+    /// (`DisplayController`). Maximum power saving, but macOS/the SoC
+    /// appears to drop into a lower CPU performance state when no
+    /// display is actively signaling – see the README.
+    case turnOffDisplay
+    /// Dim the display to near-minimum brightness instead
+    /// (`DisplayDimController`). The display stays logically "on", which
+    /// should avoid that reduced-performance state, at the cost of a
+    /// faint but nonzero glow and less certain hardware support
+    /// (external displays depend on DDC/CI).
+    case dimDisplay
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Global shortcut for toggling "Prevent Sleep": ⌃⌥⌘L. Chosen to be
@@ -8,17 +23,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let hotKeyCode = UInt32(kVK_ANSI_L)
     private static let hotKeyModifiers = UInt32(controlKey | optionKey | cmdKey)
     private static let hotKeyDisplayString = "⌃⌥⌘L"
+    private static let modeDefaultsKey = "de.olau.lucid.sleepPreventionMode"
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let powerManager = PowerAssertionManager()
+    private let dimController = DisplayDimController()
     private let didSetUpLoginItemDefaultsKey = "de.olau.lucid.didSetUpLoginItem"
     private var screenWakeObserver: NSObjectProtocol?
     private var hotKeyManager: HotKeyManager?
+
+    /// Persisted choice of what "Prevent Sleep" actually does. Switching
+    /// modes is only allowed while inactive (see `updateUI`) so we never
+    /// have to reconcile e.g. an already-sleeping display with a
+    /// newly-selected dim mode.
+    private var mode: SleepPreventionMode {
+        get {
+            SleepPreventionMode(rawValue: UserDefaults.standard.integer(forKey: Self.modeDefaultsKey)) ?? .turnOffDisplay
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: Self.modeDefaultsKey)
+            updateModeMenuState()
+        }
+    }
 
     private lazy var toggleItem: NSMenuItem = {
         let item = NSMenuItem(
             title: "Prevent Sleep  \(Self.hotKeyDisplayString)",
             action: #selector(toggleActive),
+            keyEquivalent: ""
+        )
+        item.target = self
+        return item
+    }()
+
+    /// Mode picker, styled as two mutually exclusive checkmarks (AppKit
+    /// menus have no distinct "radio button" glyph; this is the standard
+    /// convention, e.g. used by "Sort By" style menus).
+    private lazy var turnOffModeItem: NSMenuItem = {
+        let item = NSMenuItem(
+            title: "Turn Display Off",
+            action: #selector(selectTurnOffMode),
+            keyEquivalent: ""
+        )
+        item.target = self
+        return item
+    }()
+
+    private lazy var dimModeItem: NSMenuItem = {
+        let item = NSMenuItem(
+            title: "Dim Display",
+            action: #selector(selectDimMode),
             keyEquivalent: ""
         )
         item.target = self
@@ -45,6 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         registerLoginItemOnFirstLaunch()
         observeScreenWake()
         registerHotKey()
+        updateModeMenuState()
 
         // Start deliberately inactive: the display should only be turned
         // off immediately on an explicit click, not unexpectedly on
@@ -123,6 +178,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.addItem(toggleItem)
         menu.addItem(.separator())
+        menu.addItem(turnOffModeItem)
+        menu.addItem(dimModeItem)
+        menu.addItem(.separator())
         menu.addItem(loginItem)
         menu.addItem(.separator())
 
@@ -141,7 +199,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setActive(_ active: Bool) {
         if active {
-            // 1. Prevent sleep (system stays awake) before turning off the
+            // 1. Prevent sleep (system stays awake) before touching the
             //    display – otherwise the machine could theoretically fall
             //    asleep between the two steps.
             guard powerManager.start() else {
@@ -149,16 +207,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 updateUI(active: false)
                 return
             }
-            // 2. Turn off the display immediately instead of waiting for
-            //    the configured display-sleep timer.
-            do {
-                try DisplayController.sleepNow()
-            } catch {
-                presentDisplaySleepFailureAlert(error)
-                // Sleep protection stays active regardless.
+            // 2. Apply the selected mode immediately instead of waiting
+            //    for the configured display-sleep timer.
+            switch mode {
+            case .turnOffDisplay:
+                do {
+                    try DisplayController.sleepNow()
+                } catch {
+                    presentDisplaySleepFailureAlert(error)
+                    // Sleep protection stays active regardless.
+                }
+            case .dimDisplay:
+                dimController.dim()
             }
         } else {
             powerManager.stop()
+            if dimController.isDimmed {
+                dimController.restore()
+            }
         }
         updateUI(active: active)
     }
@@ -166,6 +232,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateUI(active: Bool) {
         statusItem.button?.image = statusImage(active: active)
         toggleItem.state = active ? .on : .off
+        // Switching modes while active would need to reconcile an
+        // already-applied mode (e.g. an already-sleeping display) with a
+        // newly-selected one, so only allow it while inactive.
+        turnOffModeItem.isEnabled = !active
+        dimModeItem.isEnabled = !active
+    }
+
+    private func updateModeMenuState() {
+        turnOffModeItem.state = mode == .turnOffDisplay ? .on : .off
+        dimModeItem.state = mode == .dimDisplay ? .on : .off
     }
 
     private func statusImage(active: Bool) -> NSImage? {
@@ -174,6 +250,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: description)
         image?.isTemplate = true
         return image
+    }
+
+    @objc private func selectTurnOffMode() {
+        mode = .turnOffDisplay
+    }
+
+    @objc private func selectDimMode() {
+        mode = .dimDisplay
     }
 
     @objc private func toggleLoginItem() {
