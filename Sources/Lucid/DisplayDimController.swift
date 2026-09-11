@@ -14,6 +14,13 @@ import Foundation
 /// (`ExternalDisplayBrightness`) attempted at all, for whichever
 /// third-party monitors are left – so a Mac with only "native" displays
 /// attached never touches the DDC path.
+///
+/// On top of whatever hardware brightness it manages to set, every
+/// display also gets its gamma output capped near-black via
+/// `GammaDimmer`. Hardware brightness alone leaves some displays (the
+/// Studio Display in particular) visibly brighter at their minimum than
+/// e.g. a MacBook's built-in panel – the gamma cap closes that gap
+/// regardless of where each display's hardware floor happens to sit.
 final class DisplayDimController {
 
     private(set) var isDimmed = false
@@ -34,6 +41,7 @@ final class DisplayDimController {
                 savedNativeBrightness[display] = current
                 NativeDisplayBrightness.setBrightness(0.0, of: display)
             }
+            GammaDimmer.dim(display)
         }
 
         // DDC is the unreliable, unverified fallback – skip it entirely
@@ -54,6 +62,8 @@ final class DisplayDimController {
     func restore() {
         guard isDimmed else { return }
         isDimmed = false
+
+        GammaDimmer.restoreAll()
 
         for (display, value) in savedNativeBrightness {
             NativeDisplayBrightness.setBrightness(value, of: display)

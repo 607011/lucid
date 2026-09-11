@@ -63,6 +63,20 @@ could not be tested against real external hardware while building it (see
 Every call fails silently, so a display that doesn't support it is simply
 left alone rather than causing a crash or error dialog.
 
+Hardware brightness alone doesn't get every display equally dark – the
+Studio Display's minimum is visibly brighter than a MacBook's built-in
+panel at its minimum, for instance. On top of whatever hardware
+brightness it manages to set, "Dim Display" therefore also caps every
+display's gamma output near-black (`GammaDimmer`,
+`CGSetDisplayTransferByFormula`) – a public, if long-deprecated, Quartz
+API that scales down what's actually rendered rather than the backlight,
+so it closes that gap regardless of a given display's hardware floor.
+Restoring uses `CGDisplayRestoreColorSyncSettings()`, which resets gamma
+system-wide (there's no public per-display restore) – fine here since
+Lucid only ever dims/restores "all displays" together, but worth knowing
+if something else (Night Shift's manual slider, f.lux, ...) had also
+adjusted gamma at the time.
+
 The app deliberately starts **inactive** – even with "Start at Login"
 enabled – so the displays don't unexpectedly turn off right after login.
 
