@@ -5,15 +5,20 @@ import Foundation
 /// (near-)minimum brightness instead of putting them to sleep, while
 /// keeping them logically "on". This avoids the reduced CPU performance
 /// state macOS/the SoC seems to apply when no display is actively
-/// signaling – see the README for background. Trade-off: only the
-/// built-in display is dimmed reliably; external displays depend on
-/// DDC/CI support, which varies by monitor/cable/hub and hasn't been
-/// verified against real hardware (see ExternalDisplayBrightness.swift).
+/// signaling – see the README for background.
+///
+/// Every display is tried via the reliable native path first
+/// (`NativeDisplayBrightness` – covers the built-in panel, Studio
+/// Display, and Pro Display XDR). Only if at least one display doesn't
+/// support that is the unverified DDC/CI fallback
+/// (`ExternalDisplayBrightness`) attempted at all, for whichever
+/// third-party monitors are left – so a Mac with only "native" displays
+/// attached never touches the DDC path.
 final class DisplayDimController {
 
     private(set) var isDimmed = false
 
-    private var savedBuiltInBrightness: [CGDirectDisplayID: Float] = [:]
+    private var savedNativeBrightness: [CGDirectDisplayID: Float] = [:]
     private var savedExternalBrightness: [(service: AnyObject, value: UInt16)] = []
 
     /// Dims every active display. Always "succeeds" in the sense that it
@@ -23,12 +28,18 @@ final class DisplayDimController {
         guard !isDimmed else { return }
         isDimmed = true
 
-        for display in activeDisplayIDs() where CGDisplayIsBuiltin(display) != 0 {
-            if let current = BuiltInDisplayBrightness.brightness(of: display) {
-                savedBuiltInBrightness[display] = current
-                BuiltInDisplayBrightness.setBrightness(0.0, of: display)
+        let displays = activeDisplayIDs()
+        for display in displays {
+            if let current = NativeDisplayBrightness.brightness(of: display) {
+                savedNativeBrightness[display] = current
+                NativeDisplayBrightness.setBrightness(0.0, of: display)
             }
         }
+
+        // DDC is the unreliable, unverified fallback – skip it entirely
+        // if the native path already handled every display (e.g. a
+        // MacBook, or a MacBook plus a Studio Display).
+        guard savedNativeBrightness.count < displays.count else { return }
 
         for service in ExternalDisplayBrightness.allExternalServices() {
             if let current = ExternalDisplayBrightness.brightness(of: service) {
@@ -44,10 +55,10 @@ final class DisplayDimController {
         guard isDimmed else { return }
         isDimmed = false
 
-        for (display, value) in savedBuiltInBrightness {
-            BuiltInDisplayBrightness.setBrightness(value, of: display)
+        for (display, value) in savedNativeBrightness {
+            NativeDisplayBrightness.setBrightness(value, of: display)
         }
-        savedBuiltInBrightness.removeAll()
+        savedNativeBrightness.removeAll()
 
         for (service, value) in savedExternalBrightness {
             ExternalDisplayBrightness.setBrightness(value, of: service)

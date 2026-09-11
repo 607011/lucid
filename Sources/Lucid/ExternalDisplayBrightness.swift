@@ -2,12 +2,14 @@ import CoreGraphics
 import Foundation
 import IOKit
 
-/// Controls external display brightness via DDC/CI (VESA Monitor Control
-/// Command Set) sent over the private `IOAVService` I2C transport – the
-/// same undocumented mechanism used by MonitorControl, Lunar and ddcutil.
-/// Apple has never shipped a public API for this.
+/// Fallback for third-party displays that don't support
+/// `NativeDisplayBrightness` (i.e. aren't the built-in panel, a Studio
+/// Display, or a Pro Display XDR): controls brightness via DDC/CI (VESA
+/// Monitor Control Command Set) sent over the private `IOAVService` I2C
+/// transport – the same undocumented mechanism used by MonitorControl,
+/// Lunar and ddcutil. Apple has never shipped a public API for this.
 ///
-/// ⚠️ Unlike `BuiltInDisplayBrightness`, this has **not** been verified
+/// ⚠️ Unlike `NativeDisplayBrightness`, this has **not** been verified
 /// against real hardware (no external monitor was available while writing
 /// it). The DDC/CI byte-level protocol below follows the public VESA
 /// MCCS spec as closely as possible, but the private `IOAVService`
