@@ -22,7 +22,12 @@ enum DimLevel: Int, CaseIterable {
         switch self {
         case .pitchBlack: return 0.0
         case .veryDark: return GammaDimmer.defaultCeiling
-        case .faintGlow: return 0.05
+        // LCDs block backlight per pixel, so even a small ceiling already
+        // reads as "pitch black" once the panel is driven that low
+        // (confirmed on a Studio Display: 0.05 was indistinguishable from
+        // 0.0/0.01). This needs to sit well above the other two levels to
+        // actually look like a glow rather than more of the same black.
+        case .faintGlow: return 0.2
         }
     }
 

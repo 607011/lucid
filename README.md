@@ -48,17 +48,22 @@ Sleep" in the menu:
   "on", which should avoid the reduced-performance state above. Uses
   **undocumented, private macOS APIs** (see below) – less certain to work
   on any given machine than "Turn Display Off". Unlike "Turn Display
-  Off", the display never actually sleeps, so mouse activity re-arms
-  "Prevent Sleep" the same way display wake does for the other mode (see
-  below) – but since it's mouse-only, pure keyboard activity won't; a
-  manual click/⌃⌥⌘L always works regardless.
+  Off", the display never actually sleeps, so there's no wake event to
+  key off of – instead, keyboard or mouse activity is detected via
+  `IdleActivityMonitor` (a permission-free idle-time poll, see its doc
+  comment) and re-arms "Prevent Sleep" the same way display wake does for
+  the other mode. A manual click/⌃⌥⌘L always works regardless.
 
 How dark "Dim Display" actually gets is configurable via the "Dim Level"
 submenu (`DimLevel`): **Very Dark** (default, matches a MacBook's
 built-in panel at minimum), **Pitch Black** (true black – indistinguishable
 from off to the eye), or **Faint Glow** (a deliberately visible residual
 glow, e.g. as a nightlight). Only changeable while inactive, like the mode
-picker above.
+picker above. Note that an LCD blocks its backlight per pixel, so even a
+fairly low gamma ceiling already looks pitch black in practice – confirmed
+on a Studio Display, where "Faint Glow" needs a ceiling of `0.2` (vs.
+`0.0`/`0.01` for the other two levels) to actually look like a glow
+instead of more of the same black.
 
 Dimming the built-in display uses the private `DisplayServices`
 framework (same mechanism as the `brightness` CLI tool and Control

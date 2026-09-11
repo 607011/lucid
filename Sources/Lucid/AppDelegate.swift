@@ -33,16 +33,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var screenWakeObserver: NSObjectProtocol?
     private var hotKeyManager: HotKeyManager?
 
-    /// Global mouse-activity monitor used to auto-restore "Dim Display"
-    /// the same way `screenWakeObserver` auto-restores "Turn Display Off"
-    /// – started only while actually dimmed. Deliberately mouse-only:
-    /// unlike a keyboard monitor, `NSEvent`'s global monitor for mouse
-    /// events doesn't require Accessibility/Input Monitoring permission,
-    /// keeping with this app's "no extra permission" design (see
-    /// `HotKeyManager`). The trade-off is that pure keyboard activity with
-    /// the mouse untouched won't trigger it – a partial equivalent to the
-    /// screen-wake case, not a full one.
-    private var dimActivityMonitor: Any?
+    /// Auto-restores "Dim Display" on keyboard or mouse activity, the same
+    /// way `screenWakeObserver` auto-restores "Turn Display Off" – started
+    /// only while actually dimmed. See `IdleActivityMonitor`'s doc comment
+    /// for why this needs no extra permission despite covering the
+    /// keyboard too.
+    private lazy var idleActivityMonitor = IdleActivityMonitor { [weak self] in
+        guard let self, self.powerManager.isActive else { return }
+        self.setActive(false)
+    }
 
     /// Persisted choice of what "Prevent Sleep" actually does. Switching
     /// modes is only allowed while inactive (see `updateUI`) so we never
@@ -180,25 +179,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Starts watching for mouse activity so "Dim Display" gets
-    /// auto-restored the same way "Turn Display Off" is via
-    /// `observeScreenWake()` – see `dimActivityMonitor`'s doc comment for
-    /// why this is mouse-only. No-op if already running.
     private func startDimActivityMonitoring() {
-        guard dimActivityMonitor == nil else { return }
-        dimActivityMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.mouseMoved, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]
-        ) { [weak self] _ in
-            guard let self, self.powerManager.isActive else { return }
-            self.setActive(false)
-        }
+        idleActivityMonitor.start()
     }
 
     private func stopDimActivityMonitoring() {
-        if let dimActivityMonitor {
-            NSEvent.removeMonitor(dimActivityMonitor)
-        }
-        dimActivityMonitor = nil
+        idleActivityMonitor.stop()
     }
 
     /// Registers the global ⌃⌥⌘L shortcut so "Prevent Sleep" can be
