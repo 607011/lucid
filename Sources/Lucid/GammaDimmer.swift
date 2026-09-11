@@ -20,21 +20,24 @@ import CoreGraphics
 /// `dlopen`.
 enum GammaDimmer {
 
-    /// Fraction of the normal output range each channel is capped to.
-    /// Not quite 0 so a dimmed display still reads as "on, very dark"
-    /// rather than looking indistinguishable from "off"/blanked.
-    private static let outputCeiling: CGGammaValue = 0.01
+    /// Default fraction of the normal output range each channel is capped
+    /// to, used unless the user picked a different `DimLevel`. Not quite 0
+    /// so a dimmed display still reads as "on, very dark" rather than
+    /// looking indistinguishable from "off"/blanked.
+    static let defaultCeiling: CGGammaValue = 0.01
 
     /// Caps `display`'s gamma output near black. Safe to call on any
     /// active display, including ones `NativeDisplayBrightness`/
     /// `ExternalDisplayBrightness` don't support – this doesn't depend on
-    /// either.
-    static func dim(_ display: CGDirectDisplayID) {
+    /// either. Also safe to call repeatedly/idempotently on an
+    /// already-dimmed display, which `DisplayDimController` relies on when
+    /// a new display is hot-plugged while already dimmed.
+    static func dim(_ display: CGDirectDisplayID, ceiling: CGGammaValue = defaultCeiling) {
         CGSetDisplayTransferByFormula(
             display,
-            0, outputCeiling, 1,
-            0, outputCeiling, 1,
-            0, outputCeiling, 1
+            0, ceiling, 1,
+            0, ceiling, 1,
+            0, ceiling, 1
         )
     }
 

@@ -45,11 +45,20 @@ Sleep" in the menu:
   that keeps macOS convinced a display is attached.
 - **Dim Display** – dims every display to near-minimum brightness instead
   of sleeping it (`DisplayDimController`). Keeps the display logically
-  "on", which should avoid the reduced-performance state above, at the
-  cost of a faint residual glow instead of a fully black screen. Uses
+  "on", which should avoid the reduced-performance state above. Uses
   **undocumented, private macOS APIs** (see below) – less certain to work
-  on any given machine than "Turn Display Off", and restoring brightness
-  needs a manual click/⌃⌥⌘L again (see previous paragraph).
+  on any given machine than "Turn Display Off". Unlike "Turn Display
+  Off", the display never actually sleeps, so mouse activity re-arms
+  "Prevent Sleep" the same way display wake does for the other mode (see
+  below) – but since it's mouse-only, pure keyboard activity won't; a
+  manual click/⌃⌥⌘L always works regardless.
+
+How dark "Dim Display" actually gets is configurable via the "Dim Level"
+submenu (`DimLevel`): **Very Dark** (default, matches a MacBook's
+built-in panel at minimum), **Pitch Black** (true black – indistinguishable
+from off to the eye), or **Faint Glow** (a deliberately visible residual
+glow, e.g. as a nightlight). Only changeable while inactive, like the mode
+picker above.
 
 Dimming the built-in display uses the private `DisplayServices`
 framework (same mechanism as the `brightness` CLI tool and Control
@@ -76,6 +85,16 @@ system-wide (there's no public per-display restore) – fine here since
 Lucid only ever dims/restores "all displays" together, but worth knowing
 if something else (Night Shift's manual slider, f.lux, ...) had also
 adjusted gamma at the time.
+
+A display connected while already dimmed (e.g. plugging in a second
+monitor mid-dim) gets picked up automatically via
+`CGDisplayRegisterReconfigurationCallback` and dimmed too, rather than
+staying at full brightness until the next dim/restore cycle. For a
+DDC-only external display this only applies the gamma cap, not the
+DDC/CI brightness reduction – matching a newly appeared AVService back to
+a specific display on the fly isn't something `ExternalDisplayBrightness`
+supports (see its doc comment), but the gamma cap alone still gets it
+visually dark.
 
 The app deliberately starts **inactive** – even with "Start at Login"
 enabled – so the displays don't unexpectedly turn off right after login.

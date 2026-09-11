@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let hotKeyModifiers = UInt32(controlKey | optionKey | cmdKey)
     private static let hotKeyDisplayString = "⌃⌥⌘L"
     private static let modeDefaultsKey = "de.olau.lucid.sleepPreventionMode"
+    private static let dimLevelDefaultsKey = "de.olau.lucid.dimLevel"
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let powerManager = PowerAssertionManager()
@@ -31,6 +32,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let didSetUpLoginItemDefaultsKey = "de.olau.lucid.didSetUpLoginItem"
     private var screenWakeObserver: NSObjectProtocol?
     private var hotKeyManager: HotKeyManager?
+
+    /// Global mouse-activity monitor used to auto-restore "Dim Display"
+    /// the same way `screenWakeObserver` auto-restores "Turn Display Off"
+    /// – started only while actually dimmed. Deliberately mouse-only:
+    /// unlike a keyboard monitor, `NSEvent`'s global monitor for mouse
+    /// events doesn't require Accessibility/Input Monitoring permission,
+    /// keeping with this app's "no extra permission" design (see
+    /// `HotKeyManager`). The trade-off is that pure keyboard activity with
+    /// the mouse untouched won't trigger it – a partial equivalent to the
+    /// screen-wake case, not a full one.
+    private var dimActivityMonitor: Any?
 
     /// Persisted choice of what "Prevent Sleep" actually does. Switching
     /// modes is only allowed while inactive (see `updateUI`) so we never
@@ -43,6 +55,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: Self.modeDefaultsKey)
             updateModeMenuState()
+        }
+    }
+
+    /// Persisted choice of how dark "Dim Display" makes every display (see
+    /// `DimLevel`). Like `mode`, only changeable while inactive.
+    private var dimLevel: DimLevel {
+        get {
+            DimLevel(rawValue: UserDefaults.standard.integer(forKey: Self.dimLevelDefaultsKey)) ?? .veryDark
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: Self.dimLevelDefaultsKey)
+            updateDimLevelMenuState()
         }
     }
 
@@ -79,6 +103,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }()
 
+    /// "Dim Level" submenu: one checkmarked item per `DimLevel` case,
+    /// mutually exclusive the same way `turnOffModeItem`/`dimModeItem` are.
+    private lazy var dimLevelItems: [DimLevel: NSMenuItem] = {
+        var items: [DimLevel: NSMenuItem] = [:]
+        for level in DimLevel.displayOrder {
+            let item = NSMenuItem(title: level.title, action: #selector(selectDimLevel(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = level.rawValue
+            items[level] = item
+        }
+        return items
+    }()
+
+    private lazy var dimLevelItem: NSMenuItem = {
+        let item = NSMenuItem(title: "Dim Level", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        for level in DimLevel.displayOrder {
+            if let menuItem = dimLevelItems[level] {
+                submenu.addItem(menuItem)
+            }
+        }
+        item.submenu = submenu
+        return item
+    }()
+
     private lazy var loginItem: NSMenuItem = {
         let item = NSMenuItem(
             title: "Start at Login",
@@ -100,6 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         observeScreenWake()
         registerHotKey()
         updateModeMenuState()
+        updateDimLevelMenuState()
 
         // Start deliberately inactive: the display should only be turned
         // off immediately on an explicit click, not unexpectedly on
@@ -112,6 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let screenWakeObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(screenWakeObserver)
         }
+        stopDimActivityMonitoring()
     }
 
     /// Turns "Prevent Sleep" back off automatically once the display wakes
@@ -127,6 +178,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self, self.powerManager.isActive else { return }
             self.setActive(false)
         }
+    }
+
+    /// Starts watching for mouse activity so "Dim Display" gets
+    /// auto-restored the same way "Turn Display Off" is via
+    /// `observeScreenWake()` – see `dimActivityMonitor`'s doc comment for
+    /// why this is mouse-only. No-op if already running.
+    private func startDimActivityMonitoring() {
+        guard dimActivityMonitor == nil else { return }
+        dimActivityMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.mouseMoved, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]
+        ) { [weak self] _ in
+            guard let self, self.powerManager.isActive else { return }
+            self.setActive(false)
+        }
+    }
+
+    private func stopDimActivityMonitoring() {
+        if let dimActivityMonitor {
+            NSEvent.removeMonitor(dimActivityMonitor)
+        }
+        dimActivityMonitor = nil
     }
 
     /// Registers the global ⌃⌥⌘L shortcut so "Prevent Sleep" can be
@@ -180,6 +252,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(turnOffModeItem)
         menu.addItem(dimModeItem)
+        menu.addItem(dimLevelItem)
         menu.addItem(.separator())
         menu.addItem(loginItem)
         menu.addItem(.separator())
@@ -218,13 +291,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // Sleep protection stays active regardless.
                 }
             case .dimDisplay:
-                dimController.dim()
+                dimController.dim(gammaCeiling: dimLevel.gammaCeiling)
+                startDimActivityMonitoring()
             }
         } else {
             powerManager.stop()
             if dimController.isDimmed {
                 dimController.restore()
             }
+            stopDimActivityMonitoring()
         }
         updateUI(active: active)
     }
@@ -237,11 +312,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // newly-selected one, so only allow it while inactive.
         turnOffModeItem.isEnabled = !active
         dimModeItem.isEnabled = !active
+        // Changing the dim level while already dimmed wouldn't visibly
+        // apply until the next dim/restore cycle anyway (see
+        // `DisplayDimController.dim(gammaCeiling:)`), so keep it disabled
+        // while active for the same reason as the mode picker above.
+        dimLevelItem.isEnabled = !active
     }
 
     private func updateModeMenuState() {
         turnOffModeItem.state = mode == .turnOffDisplay ? .on : .off
         dimModeItem.state = mode == .dimDisplay ? .on : .off
+    }
+
+    private func updateDimLevelMenuState() {
+        for (level, item) in dimLevelItems {
+            item.state = level == dimLevel ? .on : .off
+        }
     }
 
     private func statusImage(active: Bool) -> NSImage? {
@@ -258,6 +344,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func selectDimMode() {
         mode = .dimDisplay
+    }
+
+    @objc private func selectDimLevel(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? Int, let level = DimLevel(rawValue: rawValue) else { return }
+        dimLevel = level
     }
 
     @objc private func toggleLoginItem() {
