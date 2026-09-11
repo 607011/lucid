@@ -1,5 +1,10 @@
 # Lucid
 
+[![Release](https://github.com/607011/lucid/actions/workflows/release.yml/badge.svg)](https://github.com/607011/lucid/actions/workflows/release.yml)
+[![Latest Release](https://img.shields.io/github/v/release/607011/lucid)](https://github.com/607011/lucid/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey)](Package.swift)
+[![License: MIT](https://img.shields.io/github/license/607011/lucid)](LICENSE)
+
 A macOS menu bar app that prevents system sleep while immediately turning
 off all connected displays. Built for sustained-load computations (e.g.
 [PrimeGrid](https://www.primegrid.com/)/BOINC), where the CPU should run
