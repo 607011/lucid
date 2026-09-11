@@ -11,12 +11,14 @@ APP_BUILD="${APP_BUILD:-1}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-BUILD_DIR="$PROJECT_DIR/.build/release"
+# Universal (arm64 + x86_64) build output lands in a different directory
+# than a plain single-arch `swift build -c release`.
+BUILD_DIR="$PROJECT_DIR/.build/apple/Products/Release"
 APP_DIR="$PROJECT_DIR/build/$APP_NAME.app"
 
-echo "==> Building release binary..."
+echo "==> Building universal (arm64 + x86_64) release binary..."
 cd "$PROJECT_DIR"
-swift build -c release
+swift build -c release --arch arm64 --arch x86_64
 
 echo "==> Assembling app bundle at $APP_DIR"
 rm -rf "$APP_DIR"
