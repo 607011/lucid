@@ -14,6 +14,13 @@ enum SleepPreventionMode: Int {
     /// faint but nonzero glow and less certain hardware support
     /// (external displays depend on DDC/CI).
     case dimDisplay
+    /// Show a full-screen CPU/GPU activity chart instead of touching the
+    /// display's brightness or sleep state at all
+    /// (`ActivityOverlayController`) – a screensaver rather than a power
+    /// saver. Since the display stays fully lit and actively rendering,
+    /// this sidesteps the reduced-performance state by construction, at
+    /// the cost of not saving any power at all.
+    case showActivityMonitor
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -29,15 +36,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let powerManager = PowerAssertionManager()
     private let dimController = DisplayDimController()
+    private let activityOverlayController = ActivityOverlayController()
     private let didSetUpLoginItemDefaultsKey = "de.olau.lucid.didSetUpLoginItem"
     private var screenWakeObserver: NSObjectProtocol?
     private var hotKeyManager: HotKeyManager?
 
-    /// Auto-restores "Dim Display" on keyboard or mouse activity, the same
-    /// way `screenWakeObserver` auto-restores "Turn Display Off" – started
-    /// only while actually dimmed. See `IdleActivityMonitor`'s doc comment
-    /// for why this needs no extra permission despite covering the
-    /// keyboard too.
+    /// Auto-restores "Dim Display"/"Show Activity Monitor" on keyboard or
+    /// mouse activity, the same way `screenWakeObserver` auto-restores
+    /// "Turn Display Off" – started only while one of those two modes is
+    /// actually active, since neither ever puts the display to sleep for
+    /// `screensDidWakeNotification` to fire on. See `IdleActivityMonitor`'s
+    /// doc comment for why this needs no extra permission despite covering
+    /// the keyboard too.
     private lazy var idleActivityMonitor = IdleActivityMonitor { [weak self] in
         guard let self, self.powerManager.isActive else { return }
         self.setActive(false)
@@ -96,6 +106,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSMenuItem(
             title: "Dim Display",
             action: #selector(selectDimMode),
+            keyEquivalent: ""
+        )
+        item.target = self
+        return item
+    }()
+
+    private lazy var activityMonitorModeItem: NSMenuItem = {
+        let item = NSMenuItem(
+            title: "Show Activity Monitor",
+            action: #selector(selectActivityMonitorMode),
             keyEquivalent: ""
         )
         item.target = self
@@ -161,7 +181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let screenWakeObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(screenWakeObserver)
         }
-        stopDimActivityMonitoring()
+        stopIdleActivityMonitoring()
     }
 
     /// Turns "Prevent Sleep" back off automatically once the display wakes
@@ -179,11 +199,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func startDimActivityMonitoring() {
+    private func startIdleActivityMonitoring() {
         idleActivityMonitor.start()
     }
 
-    private func stopDimActivityMonitoring() {
+    private func stopIdleActivityMonitoring() {
         idleActivityMonitor.stop()
     }
 
@@ -238,6 +258,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(turnOffModeItem)
         menu.addItem(dimModeItem)
+        menu.addItem(activityMonitorModeItem)
         menu.addItem(dimLevelItem)
         menu.addItem(.separator())
         menu.addItem(loginItem)
@@ -278,14 +299,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             case .dimDisplay:
                 dimController.dim(gammaCeiling: dimLevel.gammaCeiling)
-                startDimActivityMonitoring()
+                startIdleActivityMonitoring()
+            case .showActivityMonitor:
+                activityOverlayController.show()
+                startIdleActivityMonitoring()
             }
         } else {
             powerManager.stop()
             if dimController.isDimmed {
                 dimController.restore()
             }
-            stopDimActivityMonitoring()
+            if activityOverlayController.isShowing {
+                activityOverlayController.hide()
+            }
+            stopIdleActivityMonitoring()
         }
         updateUI(active: active)
     }
@@ -298,6 +325,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // newly-selected one, so only allow it while inactive.
         turnOffModeItem.isEnabled = !active
         dimModeItem.isEnabled = !active
+        activityMonitorModeItem.isEnabled = !active
         // Changing the dim level while already dimmed wouldn't visibly
         // apply until the next dim/restore cycle anyway (see
         // `DisplayDimController.dim(gammaCeiling:)`), so keep it disabled
@@ -308,6 +336,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateModeMenuState() {
         turnOffModeItem.state = mode == .turnOffDisplay ? .on : .off
         dimModeItem.state = mode == .dimDisplay ? .on : .off
+        activityMonitorModeItem.state = mode == .showActivityMonitor ? .on : .off
     }
 
     private func updateDimLevelMenuState() {
@@ -330,6 +359,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func selectDimMode() {
         mode = .dimDisplay
+    }
+
+    @objc private func selectActivityMonitorMode() {
+        mode = .showActivityMonitor
     }
 
     @objc private func selectDimLevel(_ sender: NSMenuItem) {
