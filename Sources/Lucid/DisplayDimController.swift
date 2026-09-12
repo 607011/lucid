@@ -1,6 +1,21 @@
 import CoreGraphics
 import Foundation
 
+/// How dark `DisplayDimController.dim(_:)` makes every display.
+enum DimStyle {
+    /// "Dim Display": hardware brightness to 0 *and* a gamma cap, so the
+    /// display reads as convincingly "off" – see `DisplayDimController`'s
+    /// doc comment for why both are needed.
+    case blackout(gammaCeiling: CGGammaValue)
+    /// "Show Activity Monitor": hardware brightness reduced to the given
+    /// fraction (the same configured Dim Level, reused here), but gamma
+    /// left untouched. The activity chart's own colors are meant to stay
+    /// legible against a dim-but-not-blacked-out screen, not get washed
+    /// toward black the way `.blackout`'s gamma cap deliberately does for
+    /// a display that's supposed to look "off".
+    case screensaver(brightness: Float)
+}
+
 /// Alternative to `DisplayController.sleepNow()`: dims all displays to
 /// (near-)minimum brightness instead of putting them to sleep, while
 /// keeping them logically "on". This avoids the reduced CPU performance
@@ -15,38 +30,39 @@ import Foundation
 /// third-party monitors are left – so a Mac with only "native" displays
 /// attached never touches the DDC path.
 ///
-/// On top of whatever hardware brightness it manages to set, every
-/// display also gets its gamma output capped near-black via
+/// For `.blackout`, on top of whatever hardware brightness it manages to
+/// set, every display also gets its gamma output capped near-black via
 /// `GammaDimmer`. Hardware brightness alone leaves some displays (the
 /// Studio Display in particular) visibly brighter at their minimum than
 /// e.g. a MacBook's built-in panel – the gamma cap closes that gap
 /// regardless of where each display's hardware floor happens to sit.
+/// `.screensaver` skips the gamma cap entirely (see `DimStyle`).
 ///
 /// While dimmed, a `CGDisplayRegisterReconfigurationCallback` watches for
 /// newly connected displays (e.g. plugging in a second monitor mid-dim)
-/// and dims those too – both native brightness and the gamma cap, so a
-/// hot-plugged display doesn't stay at full brightness until the next
-/// dim/restore cycle. Hot-plugged DDC-only external displays only get the
-/// gamma cap, not the DDC/CI brightness reduction – matching a new
+/// and dims those too – both native brightness and (for `.blackout`) the
+/// gamma cap, so a hot-plugged display doesn't stay at full brightness
+/// until the next dim/restore cycle. Hot-plugged DDC-only external
+/// displays only get the gamma cap (for `.blackout`; nothing at all for
+/// `.screensaver`), not the DDC/CI brightness reduction – matching a new
 /// service back to a specific `CGDirectDisplayID` on the fly isn't
-/// something `ExternalDisplayBrightness` supports (see there); the gamma
-/// cap alone still gets them visually dark.
+/// something `ExternalDisplayBrightness` supports (see there).
 final class DisplayDimController {
 
     private(set) var isDimmed = false
 
     private var savedNativeBrightness: [CGDirectDisplayID: Float] = [:]
     private var savedExternalBrightness: [(service: AnyObject, value: UInt16)] = []
-    private var gammaCeiling: CGGammaValue = GammaDimmer.defaultCeiling
+    private var style: DimStyle = .blackout(gammaCeiling: GammaDimmer.defaultCeiling)
     private var isObservingReconfiguration = false
 
-    /// Dims every active display. Always "succeeds" in the sense that it
-    /// never throws – displays that can't be controlled (API unsupported,
-    /// DDC failed, ...) are silently left alone.
-    func dim(gammaCeiling: CGGammaValue = GammaDimmer.defaultCeiling) {
+    /// Dims every active display per `style`. Always "succeeds" in the
+    /// sense that it never throws – displays that can't be controlled
+    /// (API unsupported, DDC failed, ...) are silently left alone.
+    func dim(_ style: DimStyle) {
         guard !isDimmed else { return }
         isDimmed = true
-        self.gammaCeiling = gammaCeiling
+        self.style = style
 
         let displays = activeDisplayIDs()
         for display in displays {
@@ -62,7 +78,7 @@ final class DisplayDimController {
         for service in ExternalDisplayBrightness.allExternalServices() {
             if let current = ExternalDisplayBrightness.brightness(of: service) {
                 savedExternalBrightness.append((service, current))
-                ExternalDisplayBrightness.setBrightness(0, of: service)
+                ExternalDisplayBrightness.setBrightness(externalBrightnessTarget, of: service)
             }
         }
     }
@@ -74,6 +90,8 @@ final class DisplayDimController {
         isDimmed = false
 
         stopObservingReconfiguration()
+        // Harmless even for `.screensaver`, which never touched gamma:
+        // resetting an already-normal gamma table is a no-op in effect.
         GammaDimmer.restoreAll()
 
         for (display, value) in savedNativeBrightness {
@@ -87,17 +105,33 @@ final class DisplayDimController {
         savedExternalBrightness.removeAll()
     }
 
-    /// Applies both the native-brightness-zeroing and the gamma cap to one
-    /// display. Idempotent: safe to call again on a display that's
-    /// already dimmed (used both for the initial pass and for displays
-    /// that appear later via hot-plug), since it only *saves* a display's
-    /// brightness the first time it sees it.
+    private var nativeBrightnessTarget: Float {
+        switch style {
+        case .blackout: return 0.0
+        case .screensaver(let brightness): return brightness
+        }
+    }
+
+    private var externalBrightnessTarget: UInt16 {
+        switch style {
+        case .blackout: return 0
+        case .screensaver(let brightness): return UInt16(brightness * 100)
+        }
+    }
+
+    /// Applies the hardware brightness target for the current `style`,
+    /// plus its gamma cap if any. Idempotent: safe to call again on a
+    /// display that's already dimmed (used both for the initial pass and
+    /// for displays that appear later via hot-plug), since it only
+    /// *saves* a display's brightness the first time it sees it.
     private func dimNatively(_ display: CGDirectDisplayID) {
         if savedNativeBrightness[display] == nil, let current = NativeDisplayBrightness.brightness(of: display) {
             savedNativeBrightness[display] = current
-            NativeDisplayBrightness.setBrightness(0.0, of: display)
+            NativeDisplayBrightness.setBrightness(nativeBrightnessTarget, of: display)
         }
-        GammaDimmer.dim(display, ceiling: gammaCeiling)
+        if case .blackout(let gammaCeiling) = style {
+            GammaDimmer.dim(display, ceiling: gammaCeiling)
+        }
     }
 
     private func activeDisplayIDs() -> [CGDirectDisplayID] {

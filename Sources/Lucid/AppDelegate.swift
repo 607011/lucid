@@ -14,12 +14,14 @@ enum SleepPreventionMode: Int {
     /// faint but nonzero glow and less certain hardware support
     /// (external displays depend on DDC/CI).
     case dimDisplay
-    /// Show a full-screen CPU/GPU activity chart instead of touching the
-    /// display's brightness or sleep state at all
-    /// (`ActivityOverlayController`) – a screensaver rather than a power
-    /// saver. Since the display stays fully lit and actively rendering,
-    /// this sidesteps the reduced-performance state by construction, at
-    /// the cost of not saving any power at all.
+    /// Show a full-screen CPU/GPU activity chart (`ActivityOverlayController`)
+    /// – a screensaver rather than a power saver. Since the display stays
+    /// fully lit and actively rendering, this sidesteps the
+    /// reduced-performance state by construction, saving much less power
+    /// than the other two modes. Still dims the hardware brightness to
+    /// the configured Dim Level first (`DimStyle.screensaver`) rather
+    /// than showing the chart at full brightness – gamma is left alone
+    /// so the chart's own colors stay legible.
     case showActivityMonitor
 }
 
@@ -31,7 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let hotKeyModifiers = UInt32(controlKey | optionKey | cmdKey)
     private static let hotKeyDisplayString = "⌃⌥⌘L"
     private static let modeDefaultsKey = "de.olau.lucid.sleepPreventionMode"
-    private static let dimLevelDefaultsKey = "de.olau.lucid.dimLevel"
+    private static let dimGammaCeilingDefaultsKey = "de.olau.lucid.dimGammaCeiling"
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let powerManager = PowerAssertionManager()
@@ -67,15 +69,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Persisted choice of how dark "Dim Display" makes every display (see
-    /// `DimLevel`). Like `mode`, only changeable while inactive.
-    private var dimLevel: DimLevel {
+    /// Persisted choice of how dark "Dim Display"/"Show Activity Monitor"
+    /// make every display (see `DimLevel`). Like `mode`, only changeable
+    /// while inactive. Reads via `object(forKey:) as? Double` rather than
+    /// `double(forKey:)`, whose default of 0.0 would silently mean "never
+    /// configured" and "pitch black" the same thing.
+    private var dimGammaCeiling: CGGammaValue {
         get {
-            DimLevel(rawValue: UserDefaults.standard.integer(forKey: Self.dimLevelDefaultsKey)) ?? .veryDark
+            let stored = UserDefaults.standard.object(forKey: Self.dimGammaCeilingDefaultsKey) as? Double
+            return stored.map(CGGammaValue.init) ?? DimLevel.defaultCeiling
         }
         set {
-            UserDefaults.standard.set(newValue.rawValue, forKey: Self.dimLevelDefaultsKey)
-            updateDimLevelMenuState()
+            let clamped = max(DimLevel.minCeiling, min(DimLevel.maxCeiling, newValue))
+            UserDefaults.standard.set(Double(clamped), forKey: Self.dimGammaCeilingDefaultsKey)
+            updateDimLevelSliderState()
         }
     }
 
@@ -122,30 +129,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }()
 
-    /// "Dim Level" submenu: one checkmarked item per `DimLevel` case,
-    /// mutually exclusive the same way `turnOffModeItem`/`dimModeItem` are.
-    private lazy var dimLevelItems: [DimLevel: NSMenuItem] = {
-        var items: [DimLevel: NSMenuItem] = [:]
-        for level in DimLevel.displayOrder {
-            let item = NSMenuItem(title: level.title, action: #selector(selectDimLevel(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = level.rawValue
-            items[level] = item
-        }
-        return items
+    /// Live "N%" readout next to `dimLevelSlider`, kept in sync by
+    /// `updateDimLevelSliderState()`.
+    private lazy var dimLevelValueLabel: NSTextField = {
+        let label = NSTextField(labelWithString: "")
+        label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        label.textColor = .secondaryLabelColor
+        label.alignment = .right
+        return label
     }()
 
+    /// Continuous (not `isContinuous = false`) slider over `DimLevel`'s
+    /// range, replacing what used to be three fixed presets – see
+    /// `DimLevel`'s doc comment for why a few fixed points weren't
+    /// granular enough.
+    private lazy var dimLevelSlider: NSSlider = {
+        let slider = NSSlider(
+            value: Double(dimGammaCeiling),
+            minValue: Double(DimLevel.minCeiling),
+            maxValue: Double(DimLevel.maxCeiling),
+            target: self,
+            action: #selector(dimLevelSliderChanged(_:))
+        )
+        slider.isContinuous = true
+        return slider
+    }()
+
+    /// Custom-view menu item hosting `dimLevelSlider`. Laid out with
+    /// explicit frames rather than Auto Layout constraints – NSMenu
+    /// doesn't reliably run a full layout pass for custom item views, so
+    /// a fixed frame is the more predictable choice here.
     private lazy var dimLevelItem: NSMenuItem = {
-        let item = NSMenuItem(title: "Dim Level", action: nil, keyEquivalent: "")
-        let submenu = NSMenu()
-        for level in DimLevel.displayOrder {
-            if let menuItem = dimLevelItems[level] {
-                submenu.addItem(menuItem)
-            }
-        }
-        item.submenu = submenu
+        let item = NSMenuItem()
+        item.view = makeDimLevelView()
         return item
     }()
+
+    private func makeDimLevelView() -> NSView {
+        let width: CGFloat = 240
+        let height: CGFloat = 54
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+
+        let title = NSTextField(labelWithString: "Dim Level")
+        title.font = .menuFont(ofSize: 0)
+        title.frame = NSRect(x: 14, y: height - 22, width: width - 28, height: 16)
+        container.addSubview(title)
+
+        dimLevelValueLabel.frame = NSRect(x: width - 14 - 36, y: 6, width: 36, height: 16)
+        container.addSubview(dimLevelValueLabel)
+
+        dimLevelSlider.frame = NSRect(x: 14, y: 4, width: width - 28 - 44, height: 20)
+        container.addSubview(dimLevelSlider)
+
+        return container
+    }
 
     private lazy var loginItem: NSMenuItem = {
         let item = NSMenuItem(
@@ -168,7 +205,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         observeScreenWake()
         registerHotKey()
         updateModeMenuState()
-        updateDimLevelMenuState()
+        updateDimLevelSliderState()
 
         // Start deliberately inactive: the display should only be turned
         // off immediately on an explicit click, not unexpectedly on
@@ -298,9 +335,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // Sleep protection stays active regardless.
                 }
             case .dimDisplay:
-                dimController.dim(gammaCeiling: dimLevel.gammaCeiling)
+                dimController.dim(.blackout(gammaCeiling: dimGammaCeiling))
                 startIdleActivityMonitoring()
             case .showActivityMonitor:
+                dimController.dim(.screensaver(brightness: Float(dimGammaCeiling)))
                 activityOverlayController.show()
                 startIdleActivityMonitoring()
             }
@@ -326,11 +364,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         turnOffModeItem.isEnabled = !active
         dimModeItem.isEnabled = !active
         activityMonitorModeItem.isEnabled = !active
-        // Changing the dim level while already dimmed wouldn't visibly
-        // apply until the next dim/restore cycle anyway (see
-        // `DisplayDimController.dim(gammaCeiling:)`), so keep it disabled
-        // while active for the same reason as the mode picker above.
+        // Changing the dim level while already dimmed/showing wouldn't
+        // visibly apply until the next dim/restore cycle anyway (see
+        // `DisplayDimController.dim(_:)`), so keep it disabled while
+        // active for the same reason as the mode picker above.
+        // NSMenuItem.isEnabled has no effect on a custom `view`'s own
+        // controls, so the slider itself needs disabling too.
         dimLevelItem.isEnabled = !active
+        dimLevelSlider.isEnabled = !active
     }
 
     private func updateModeMenuState() {
@@ -339,10 +380,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         activityMonitorModeItem.state = mode == .showActivityMonitor ? .on : .off
     }
 
-    private func updateDimLevelMenuState() {
-        for (level, item) in dimLevelItems {
-            item.state = level == dimLevel ? .on : .off
-        }
+    private func updateDimLevelSliderState() {
+        dimLevelSlider.doubleValue = Double(dimGammaCeiling)
+        dimLevelValueLabel.stringValue = "\(Int(round(dimGammaCeiling * 100)))%"
     }
 
     private func statusImage(active: Bool) -> NSImage? {
@@ -365,9 +405,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mode = .showActivityMonitor
     }
 
-    @objc private func selectDimLevel(_ sender: NSMenuItem) {
-        guard let rawValue = sender.representedObject as? Int, let level = DimLevel(rawValue: rawValue) else { return }
-        dimLevel = level
+    @objc private func dimLevelSliderChanged(_ sender: NSSlider) {
+        dimGammaCeiling = CGGammaValue(sender.doubleValue)
     }
 
     @objc private func toggleLoginItem() {

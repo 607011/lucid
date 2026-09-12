@@ -81,18 +81,27 @@ Sleep" in the menu:
   (`ActivityChartView.randomizeDrift()`) rather than sitting in one spot
   for as long as the mode stays active – a burn-in risk given this can
   easily run for hours unattended, which is exactly
-  why real screensavers move their content around too.
+  why real screensavers move their content around too. It also dims to
+  the configured Dim Level (see below) before showing the chart, rather
+  than appearing at full brightness.
 
-How dark "Dim Display" actually gets is configurable via the "Dim Level"
-submenu (`DimLevel`): **Very Dark** (default, matches a MacBook's
-built-in panel at minimum), **Pitch Black** (true black – indistinguishable
-from off to the eye), or **Faint Glow** (a deliberately visible residual
-glow, e.g. as a nightlight). Only changeable while inactive, like the mode
-picker above. Note that an LCD blocks its backlight per pixel, so even a
-fairly low gamma ceiling already looks pitch black in practice – confirmed
-on a Studio Display, where "Faint Glow" needs a ceiling of `0.2` (vs.
-`0.0`/`0.01` for the other two levels) to actually look like a glow
-instead of more of the same black.
+How dark "Dim Display"/"Show Activity Monitor" actually get is
+configurable via the "Dim Level" slider in the menu – continuous rather
+than a few fixed presets, so you can dial in exactly how much residual
+glow/brightness you want (`DimLevel`'s range is 0–30%, defaulting to 1%,
+matching what used to be "Very Dark"). Only changeable while inactive,
+like the mode picker above. The same 0–30% value means two different
+things depending on the mode (`DimStyle`):
+
+- **Dim Display** treats it as a gamma ceiling – note that an LCD blocks
+  its backlight per pixel, so even a fairly low ceiling already looks
+  pitch black in practice (confirmed on a Studio Display, where anything
+  past ~20% stops reading as "dim" and starts looking like a normal lit
+  screen).
+- **Show Activity Monitor** treats it as a hardware brightness fraction
+  instead, with gamma left untouched – a gamma cap would wash the chart's
+  own colors toward black right along with the backlight, defeating the
+  point of a screensaver you can actually read.
 
 Dimming the built-in display uses the private `DisplayServices`
 framework (same mechanism as the `brightness` CLI tool and Control
