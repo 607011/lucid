@@ -75,6 +75,14 @@ Sleep" in the menu:
   technique apps like Stats.app use). There's no equivalent implemented
   for Intel's GPUs, so the chart only ever shows CPU there.
 
+  The chart+legend composition drifts to a new random on-screen position
+  (up to ~11% of the screen in each direction, derived from the layout's
+  own margins so it can't clip) every 20 seconds
+  (`ActivityChartView.randomizeDrift()`) rather than sitting in one spot
+  for as long as the mode stays active – a burn-in risk given this can
+  easily run for hours unattended, which is exactly
+  why real screensavers move their content around too.
+
 How dark "Dim Display" actually gets is configurable via the "Dim Level"
 submenu (`DimLevel`): **Very Dark** (default, matches a MacBook's
 built-in panel at minimum), **Pitch Black** (true black – indistinguishable

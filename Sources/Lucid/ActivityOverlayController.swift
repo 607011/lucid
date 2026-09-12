@@ -9,11 +9,19 @@ import AppKit
 /// `IdleActivityMonitor` instead (wired up in `AppDelegate`).
 final class ActivityOverlayController {
 
+    /// How often each screen's chart picks a new random on-screen
+    /// position (`ActivityChartView.randomizeDrift()`) while showing –
+    /// burn-in mitigation for content that could otherwise sit in one
+    /// spot for hours. Slow enough to not be distracting/look like
+    /// flicker, frequent enough that no single position is held for long.
+    private static let driftInterval: TimeInterval = 20
+
     private(set) var isShowing = false
 
     private var windows: [NSWindow] = []
     private var chartViews: [ActivityChartView] = []
     private let sampler = SystemActivitySampler()
+    private var driftTimer: Timer?
 
     func show() {
         guard !isShowing else { return }
@@ -21,6 +29,7 @@ final class ActivityOverlayController {
 
         for screen in NSScreen.screens {
             let chartView = ActivityChartView(frame: NSRect(origin: .zero, size: screen.frame.size))
+            chartView.randomizeDrift()
 
             let window = NSWindow(
                 contentRect: screen.frame,
@@ -47,6 +56,16 @@ final class ActivityOverlayController {
                 chartView.append(sample)
             }
         }
+
+        // Each screen's chart drifts independently (not the same offset
+        // mirrored across every screen) – no correctness reason to keep
+        // them in sync, and independent movement reads less mechanical.
+        driftTimer = Timer.scheduledTimer(withTimeInterval: Self.driftInterval, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            for chartView in self.chartViews {
+                chartView.randomizeDrift()
+            }
+        }
     }
 
     func hide() {
@@ -54,6 +73,8 @@ final class ActivityOverlayController {
         isShowing = false
 
         sampler.stop()
+        driftTimer?.invalidate()
+        driftTimer = nil
         for window in windows {
             window.orderOut(nil)
         }
