@@ -30,13 +30,14 @@ Sleep" back off again (via `NSWorkspace.screensDidWakeNotification`) and
 releases the assertion. That way a single click always both re-arms and
 triggers it – no need to first uncheck a still-checked item before you
 can put the displays back to sleep. (This only applies to "Turn Display
-Off" mode below – "Dim Display" never actually sleeps the display, so
-there's no wake event to catch; turn it off again the same way you
-turned it on.)
+Off" mode below – "Dim Display" and "Show Activity Monitor" never
+actually sleep the display, so there's no wake event to catch; turn it
+off again the same way you turned it on, or just touch the keyboard or
+mouse, see below.)
 
 ### Modes
 
-Two mutually exclusive modes, picked via the checkmarks under "Prevent
+Three mutually exclusive modes, picked via the checkmarks under "Prevent
 Sleep" in the menu:
 
 - **Turn Display Off** (default) – `pmset displaysleepnow`, turns off all
@@ -57,7 +58,22 @@ Sleep" in the menu:
   key off of – instead, keyboard or mouse activity is detected via
   `IdleActivityMonitor` (a permission-free idle-time poll, see its doc
   comment) and re-arms "Prevent Sleep" the same way display wake does for
-  the other mode. A manual click/⌃⌥⌘L always works regardless.
+  "Turn Display Off". A manual click/⌃⌥⌘L always works regardless.
+- **Show Activity Monitor** – a screensaver rather than a power saver:
+  shows a full-screen, borderless CPU (and, on Apple Silicon, GPU)
+  utilization chart on every screen (`ActivityOverlayController`/
+  `ActivityChartView`) instead of touching brightness or sleep at all. The
+  display stays fully lit and actively rendering, which sidesteps the
+  reduced-performance state by construction – at the cost of not saving
+  any power. Also uses `IdleActivityMonitor` to close the overlay on
+  keyboard/mouse activity, for the same reason as "Dim Display" above.
+  CPU usage comes from `host_processor_info` (the public Mach API
+  `top`/htop-style tools use); GPU usage is read from the Apple Silicon
+  GPU's IORegistry entry (`IOAccelerator`'s "PerformanceStatistics" ->
+  "Device Utilization %" – public IOKit calls, though that specific
+  property key isn't in any Apple header; it's the same long-relied-upon
+  technique apps like Stats.app use). There's no equivalent implemented
+  for Intel's GPUs, so the chart only ever shows CPU there.
 
 How dark "Dim Display" actually gets is configurable via the "Dim Level"
 submenu (`DimLevel`): **Very Dark** (default, matches a MacBook's
