@@ -10,6 +10,8 @@ off all connected displays. Built for sustained-load computations (e.g.
 [PrimeGrid](https://www.primegrid.com/)/BOINC), where the CPU should run
 at full performance without the monitors drawing unnecessary power.
 
+![Lucid menu popover with Prevent Sleep, three display modes, a Dim Level slider, a Start at Login checkbox, and a Quit command; the selected mode is Show Activity Monitor, with the menu displayed as a soft gray panel on a black background and the text Prevent Sleep, Turn Display Off, Dim Display, Show Activity Monitor, Dim Level, Start at Login, and Quit visible in a calm, utility-focused interface](docs/menu.png)
+
 ## How it works
 
 Clicking "Prevent Sleep" in the menu – or pressing the global shortcut
